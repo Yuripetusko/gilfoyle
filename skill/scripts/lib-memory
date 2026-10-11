@@ -22,7 +22,7 @@
 # Sets PROJECT_MEMORY_DIR (canonical when ok, empty if nothing to point at),
 # PROJECT_MEMORY_LINK (the offending path, for "symlink") and PROJECT_MEMORY_STATUS:
 #   ok | env-missing | not-git | default-missing | same-as-personal | inside-personal |
-#   contains-personal | symlink
+#   contains-personal | org-overlap | symlink
 # Returns 0 only for "ok". Callers run under set -e: call it from an `if`.
 resolve_project_memory_dir() {
   local personal_dir="${1:-}"
@@ -96,6 +96,27 @@ resolve_project_memory_dir() {
     esac
   fi
 
+  # An org directory that resolves onto, into or around the project tier (a symlink in
+  # orgs/ is enough) makes sleep and mem-share rewrite and push project files as org memory.
+  if [[ -n "$personal_dir" ]] && [[ -d "$personal_dir/orgs" ]]; then
+    local org_dir org_canonical
+    for org_dir in "$personal_dir"/orgs/*; do
+      [[ -d "$org_dir" ]] || continue
+      org_canonical=$(CDPATH='' cd -P -- "$org_dir" 2>/dev/null && pwd -P) || continue
+      case "$PROJECT_MEMORY_DIR/" in
+        "$org_canonical"/*) ;;
+        *) case "$org_canonical/" in
+             "$PROJECT_MEMORY_DIR"/*) ;;
+             *) continue ;;
+           esac ;;
+      esac
+      PROJECT_MEMORY_PERSONAL="$org_dir"
+      PROJECT_MEMORY_LINK="$org_canonical"
+      PROJECT_MEMORY_STATUS="org-overlap"
+      return 1
+    done
+  fi
+
   # .git is skipped: a checkout never delivers it, and nothing reads or writes there.
   links=$(find "$PROJECT_MEMORY_DIR" -name .git -prune -o -type l -print 2>/dev/null) || true
   if [[ -n "$links" ]]; then
@@ -148,7 +169,7 @@ _project_memory_link() {
 # opposed to there being none. Worth a warning; silence would look like "no tier".
 project_memory_misconfigured() {
   case "${PROJECT_MEMORY_STATUS:-}" in
-    env-missing|same-as-personal|inside-personal|contains-personal|symlink) return 0 ;;
+    env-missing|same-as-personal|inside-personal|contains-personal|org-overlap|symlink) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -179,6 +200,10 @@ project_memory_problem() {
     contains-personal)
       echo "  $PROJECT_MEMORY_DIR contains the personal memory directory ($PROJECT_MEMORY_PERSONAL)."
       echo "  Committing the tier would commit your personal memory, and config.toml next to it. Move the config dir out of the repo."
+      ;;
+    org-overlap)
+      echo "  The org tier $PROJECT_MEMORY_PERSONAL resolves to $PROJECT_MEMORY_LINK, which overlaps $PROJECT_MEMORY_DIR."
+      echo "  sleep and mem-share would rewrite and push project files as org memory. Untangle the two."
       ;;
     symlink)
       echo "  $PROJECT_MEMORY_LINK is a symlink to '$(readlink "$PROJECT_MEMORY_LINK" 2>/dev/null || true)'."
