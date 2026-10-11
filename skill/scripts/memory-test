@@ -660,6 +660,17 @@ def test_project_write_unresolvable(result: TestResult, verbose: bool) -> bool:
         result.test("config dir inside the project tier: init does not list it for reading",
                     init_read_command(init.stdout) is None, init.stdout, verbose)
 
+    with sandbox() as box:
+        # Same, before the personal directory exists: config.toml already sits next to kb/.
+        repo = box.make_repo()
+        project = box.make_project_memory(repo)
+        (project / "config.toml").write_text("[axiom.deployments.dev]\ntoken = \"xaat-not-real\"\n")
+        proc = box.run("mem-write", "--project", "facts", "nested", "no personal dir yet", cwd=repo,
+                       extra_env={"GILFOYLE_CONFIG_DIR": str(project)})
+        result.test("config dir is the project tier, personal dir not created: mem-write refused",
+                    proc.returncode != 0 and "contains the personal memory directory" in proc.stderr,
+                    proc.stdout + proc.stderr, verbose)
+
     return result.failed == 0
 
 
@@ -890,6 +901,20 @@ def test_project_doctor_git_state(result: TestResult, verbose: bool) -> bool:
         line = "\n".join(lines[start + 1:start + 3])
         result.test("tier outside git: warned", line.startswith("⚠️") and "not in a git repository" in line,
                     line, verbose)
+
+    with sandbox() as box:
+        # A bare repo: rev-parse --is-inside-work-tree prints "false" and still exits 0.
+        bare = box.root / "bare.git"
+        box.git("init", "-q", "--bare", str(bare), cwd=box.root)
+        (bare / "kb").mkdir()
+        plain = box.root / "plain"
+        plain.mkdir()
+        env = {"GILFOYLE_PROJECT_MEMORY_DIR": str(bare)}
+        box.run("mem-write", "--project", "facts", "bare", "inside a bare repo", cwd=plain, extra_env=env)
+        doctor = box.run("mem-doctor", cwd=plain, extra_env=env)
+        result.test("tier in a bare repo: mem-doctor finishes and warns",
+                    doctor.returncode == 0 and "not in a git repository" in doctor.stdout,
+                    f"exit {doctor.returncode}: {doctor.stdout}{doctor.stderr}", verbose)
 
     return result.failed == 0
 

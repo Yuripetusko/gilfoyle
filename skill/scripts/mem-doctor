@@ -102,7 +102,8 @@ echo ""
 if resolve_project_memory_dir "$MEMORY_DIR"; then
   echo "Project Tier:"
   entries=$(count_entries "$PROJECT_MEMORY_DIR")
-  if git -C "$PROJECT_MEMORY_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  # rev-parse exits 0 and prints "false" inside a bare repo or a .git directory.
+  if [[ "$(git -C "$PROJECT_MEMORY_DIR" rev-parse --is-inside-work-tree 2>/dev/null)" == "true" ]]; then
     # check-ignore skips tracked files: they are committed whatever the rules say.
     # The whole-tier probe asks about kb/ itself, so only a directory-wide rule matches it;
     # a rule naming one file is left to the per-file count.

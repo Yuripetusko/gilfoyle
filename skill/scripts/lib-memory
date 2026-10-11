@@ -77,7 +77,7 @@ resolve_project_memory_dir() {
   # Anything under the personal directory is an org tier (orgs/<name>) or part of the
   # personal one, aliases included. sleep and mem-share commit and push org tiers, and
   # project writes must not ride along.
-  if [[ -n "$personal_dir" ]] && personal_canonical=$(CDPATH='' cd -P -- "$personal_dir" 2>/dev/null && pwd -P); then
+  if [[ -n "$personal_dir" ]] && personal_canonical=$(_canonical_path "$personal_dir"); then
     case "$PROJECT_MEMORY_DIR/" in
       "$personal_canonical"/*)
         PROJECT_MEMORY_PERSONAL="$personal_canonical"
@@ -105,6 +105,27 @@ resolve_project_memory_dir() {
   fi
 
   return 0
+}
+
+# _canonical_path <path>
+# Physical path of <path>, which need not exist yet: the deepest existing ancestor is
+# resolved and the rest appended. The overlap checks must not wait for the personal
+# directory to be created, config.toml is already sitting next to where it will be.
+_canonical_path() {
+  local path="$1" rest="" base=""
+  while [[ ! -d "$path" ]]; do
+    if [[ "$path" != */* ]]; then
+      rest="/$path$rest"
+      path="."
+      break
+    fi
+    rest="/${path##*/}$rest"
+    path="${path%/*}"
+    [[ -n "$path" ]] || path="/"
+  done
+  base=$(CDPATH='' cd -P -- "$path" 2>/dev/null && pwd -P) || return 1
+  [[ "$base" != "/" ]] || base=""
+  printf '%s%s\n' "$base" "$rest"
 }
 
 # _project_memory_link <path>
