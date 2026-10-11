@@ -38,6 +38,22 @@ MEMORY_DIR="$CONFIG_DIR/memory/kb"
 MIGRATE="${1:-}"
 FIRST_RUN=false
 
+# Reported, never created: this tier belongs to the project's repo, not to us.
+# Also runs on the first-run early exit: committed knowledge doesn't wait for a config.
+report_project_memory() {
+    local file_count
+    if resolve_project_memory_dir "$CONFIG_DIR/memory"; then
+        file_count=$(find "$PROJECT_MEMORY_DIR/kb" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
+        echo ""
+        echo "Project memory (read with: find $PROJECT_MEMORY_DIR -path '*/kb/*.md' -type f -exec cat {} +):"
+        echo "  ${file_count} files (${PROJECT_MEMORY_DIR}/kb) — entries are [project]; personal > project > org"
+    elif project_memory_misconfigured; then
+        echo ""
+        echo -e "${YELLOW}⚠️  Project memory ignored. Do not read it.${NC}"
+        project_memory_problem
+    fi
+}
+
 # Refuse to write through symlinks
 if [[ -L "$CONFIG_FILE" ]]; then
     echo "Error: $CONFIG_FILE is a symlink. Refusing to write." >&2
@@ -276,6 +292,7 @@ if [[ -f "$CONFIG_FILE" ]] && ! grep -qE '^[[:space:]]*\[(axiom|grafana|pyroscop
 
     if [[ "$FIRST_RUN" == true ]]; then
         # No point running discovery with an empty config
+        report_project_memory
         exit 0
     fi
 fi
@@ -322,17 +339,7 @@ fi
 
 # ─── Project Memory ──────────────────────────────────────────────────
 
-# Reported, never created: this tier belongs to the project's repo, not to us.
-if resolve_project_memory_dir "$CONFIG_DIR/memory"; then
-    file_count=$(find "$PROJECT_MEMORY_DIR/kb" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
-    echo ""
-    echo "Project memory (read with: find $PROJECT_MEMORY_DIR -path '*/kb/*.md' -type f -exec cat {} +):"
-    echo "  ${file_count} files (${PROJECT_MEMORY_DIR}/kb) — entries are [project]; personal > project > org"
-elif project_memory_misconfigured; then
-    echo ""
-    echo -e "${YELLOW}⚠️  Project memory ignored. Do not read it.${NC}"
-    project_memory_problem
-fi
+report_project_memory
 
 echo ""
 echo -e "${BOLD}Discovery Complete.${NC}"
