@@ -21,16 +21,17 @@
 #
 # Sets PROJECT_MEMORY_DIR (canonical when ok, empty if nothing to point at),
 # PROJECT_MEMORY_LINK (the offending path, for "symlink") and PROJECT_MEMORY_STATUS:
-#   ok | env-missing | not-git | default-missing | same-as-personal | symlink
+#   ok | env-missing | not-git | default-missing | same-as-personal | inside-personal | symlink
 # Returns 0 only for "ok". Callers run under set -e: call it from an `if`.
 resolve_project_memory_dir() {
   local personal_dir="${1:-}"
   local configured="${GILFOYLE_PROJECT_MEMORY_DIR:-}"
   local relative=".gilfoyle/memory"
-  local missing_status="" toplevel="" canonical="" links=""
+  local missing_status="" toplevel="" canonical="" links="" personal_canonical=""
 
   PROJECT_MEMORY_DIR=""
   PROJECT_MEMORY_LINK=""
+  PROJECT_MEMORY_PERSONAL=""
   PROJECT_MEMORY_STATUS="ok"
 
   if [[ -n "$configured" ]]; then
@@ -72,6 +73,19 @@ resolve_project_memory_dir() {
   fi
   PROJECT_MEMORY_DIR="$canonical"
 
+  # Anything under the personal directory is an org tier (orgs/<name>) or part of the
+  # personal one, aliases included. sleep and mem-share commit and push org tiers, and
+  # project writes must not ride along.
+  if [[ -n "$personal_dir" ]] && personal_canonical=$(CDPATH='' cd -P -- "$personal_dir" 2>/dev/null && pwd -P); then
+    case "$PROJECT_MEMORY_DIR/" in
+      "$personal_canonical"/*)
+        PROJECT_MEMORY_PERSONAL="$personal_canonical"
+        PROJECT_MEMORY_STATUS="inside-personal"
+        return 1
+        ;;
+    esac
+  fi
+
   # .git is skipped: a checkout never delivers it, and nothing reads or writes there.
   links=$(find "$PROJECT_MEMORY_DIR" -name .git -prune -o -type l -print 2>/dev/null) || true
   if [[ -n "$links" ]]; then
@@ -99,7 +113,7 @@ _project_memory_link() {
 # opposed to there being none. Worth a warning; silence would look like "no tier".
 project_memory_misconfigured() {
   case "${PROJECT_MEMORY_STATUS:-}" in
-    env-missing|same-as-personal|symlink) return 0 ;;
+    env-missing|same-as-personal|inside-personal|symlink) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -122,6 +136,10 @@ project_memory_problem() {
       ;;
     same-as-personal)
       echo "  $PROJECT_MEMORY_DIR is the personal memory directory. That is not a second tier."
+      ;;
+    inside-personal)
+      echo "  $PROJECT_MEMORY_DIR is inside the personal memory directory ($PROJECT_MEMORY_PERSONAL)."
+      echo "  That is an org tier or part of yours, and org tiers get committed and pushed. Not a project tier."
       ;;
     symlink)
       echo "  $PROJECT_MEMORY_LINK is a symlink to '$(readlink "$PROJECT_MEMORY_LINK" 2>/dev/null || true)'."

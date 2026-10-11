@@ -629,6 +629,22 @@ def test_project_write_unresolvable(result: TestResult, verbose: bool) -> bool:
         result.test("env var is the personal directory: says so", "personal" in proc.stderr,
                     proc.stderr, verbose)
 
+    with sandbox() as box:
+        # An org tier is not a project tier: sleep and mem-share would commit and push the write.
+        org = box.config / "memory" / "orgs" / "team"
+        (org / "kb").mkdir(parents=True)
+        alias = box.root / "alias"
+        alias.symlink_to(org)
+        for label, target in (("an org tier", org), ("a symlinked alias of an org tier", alias)):
+            proc = box.run("mem-write", "--project", "facts", "leak", "would be pushed with the org",
+                           extra_env={"GILFOYLE_PROJECT_MEMORY_DIR": str(target)})
+            result.test(f"env var is {label}: refused, saying why",
+                        proc.returncode != 0 and "inside the personal memory directory" in proc.stderr,
+                        proc.stdout + proc.stderr, verbose)
+            result.test(f"env var is {label}: nothing written",
+                        not any("leak" in p.read_text() for p in org.rglob("*.md") if p.is_file()),
+                        "the org tier was written to", verbose)
+
     return result.failed == 0
 
 
@@ -830,6 +846,20 @@ def test_project_doctor_git_state(result: TestResult, verbose: bool) -> bool:
         result.test("file-specific rule on facts.md: per-file warning, not a whole-tier one",
                     "1 file(s) ignored by git" in line and "None of it reaches the repo" not in line,
                     line, verbose)
+
+    with sandbox() as box:
+        # kb/ ignored after files were committed: those stay tracked, only new ones are shut out.
+        repo = box.make_repo()
+        project = box.make_project_memory(repo)
+        box.run("mem-write", "--project", "facts", "tracked", "committed before the rule", cwd=repo)
+        box.git("add", "-A", cwd=repo)
+        box.git("commit", "-q", "-m", "project memory", cwd=repo)
+        (repo / ".git" / "info" / "exclude").write_text(f"{(PROJECT_MEMORY_REL / 'kb').as_posix()}/\n")
+        box.run("mem-write", "--project", "facts", "edit", "an edit to a tracked file", cwd=repo)
+        line = doctor_tier_line(box, repo)
+        result.test("kb/ ignored with tracked files: tracked ones still reach the repo",
+                    "None of it reaches the repo" not in line and "1 tracked file(s) still reach the repo" in line
+                    and "1 uncommitted" in line, line, verbose)
 
     with sandbox() as box:
         # An env var tier outside any git repo works, but nothing carries it to another checkout.
