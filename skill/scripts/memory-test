@@ -715,6 +715,21 @@ def test_project_write_unresolvable(result: TestResult, verbose: bool) -> bool:
                     share.stdout + share.stderr, verbose)
 
     with sandbox() as box:
+        # The project contains the config dir (refused as contains-personal) and an org links back to it:
+        # org writes would land in the project and get committed and pushed with it.
+        tier = box.make_repo("tier")
+        (tier / "kb").mkdir()
+        config = tier / "cfg"
+        (config / "memory" / "orgs").mkdir(parents=True)
+        (config / "memory" / "orgs" / "team").symlink_to(tier)
+        env = {"GILFOYLE_CONFIG_DIR": str(config), "GILFOYLE_PROJECT_MEMORY_DIR": str(tier)}
+        org = box.run("mem-write", "--org", "team", "facts", "nested-org", "would push the project", cwd=tier,
+                      extra_env=env)
+        result.test("org linking back to a project that contains the config: mem-write --org refused",
+                    org.returncode != 0 and "resolves onto project memory" in org.stderr
+                    and not (tier / "kb" / "facts.md").exists(), org.stdout + org.stderr, verbose)
+
+    with sandbox() as box:
         # mem-sync (also run by init) must not fast-forward a project checkout that an org links to.
         remote = box.root / "project-remote.git"
         box.git("init", "-q", "--bare", str(remote), cwd=box.root)
