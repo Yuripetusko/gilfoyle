@@ -817,6 +817,35 @@ def test_project_doctor_git_state(result: TestResult, verbose: bool) -> bool:
                     line.startswith("⚠️") and "1 file(s) ignored by git" in line and "incidents.md" in line,
                     line, verbose)
 
+    with sandbox() as box:
+        # A rule naming facts.md while patterns.md is tracked is not a whole-tier ignore.
+        repo = box.make_repo()
+        project = box.make_project_memory(repo)
+        (repo / ".git" / "info" / "exclude").write_text("facts.md\n")
+        box.run("mem-write", "--project", "patterns", "tracked", "committed for real", cwd=repo)
+        box.git("add", "-A", cwd=repo)
+        box.git("commit", "-q", "-m", "project memory", cwd=repo)
+        box.run("mem-write", "--project", "facts", "local-only", "ignored by a file rule", cwd=repo)
+        line = doctor_tier_line(box, repo)
+        result.test("file-specific rule on facts.md: per-file warning, not a whole-tier one",
+                    "1 file(s) ignored by git" in line and "None of it reaches the repo" not in line,
+                    line, verbose)
+
+    with sandbox() as box:
+        # An env var tier outside any git repo works, but nothing carries it to another checkout.
+        project = box.root / "shared" / "memory"
+        (project / "kb").mkdir(parents=True)
+        plain = box.root / "plain"
+        plain.mkdir()
+        env = {"GILFOYLE_PROJECT_MEMORY_DIR": str(project)}
+        box.run("mem-write", "--project", "facts", "machine-local", "stays here", cwd=plain, extra_env=env)
+        doctor = box.run("mem-doctor", cwd=plain, extra_env=env)
+        lines = doctor.stdout.splitlines()
+        start = lines.index("Project Tier:") if "Project Tier:" in lines else len(lines)
+        line = "\n".join(lines[start + 1:start + 3])
+        result.test("tier outside git: warned", line.startswith("⚠️") and "not in a git repository" in line,
+                    line, verbose)
+
     return result.failed == 0
 
 
