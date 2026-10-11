@@ -107,7 +107,7 @@ The tier exists only if its `kb/` does. Same layout as the personal tier (`kb/fa
 - **Sync is plain git.** `mem-sync` and `mem-share` handle org repos only. Pull the project tier the way you pull the project.
 - **Sleep skips it.** `scripts/sleep` never rewrites the project tier: compaction of committed files makes noisy diffs. Dedupe by hand, in a normal change.
 - **No symlinks.** Anything inside the tier that is a symlink, `kb/` and its files included, gets the whole tier ignored: not read, not written. So does a symlink at `.gilfoyle/memory` or its parent directory, at the default location. A committed `kb/facts.md -> ~/.ssh/id_ed25519` would otherwise be read into context and appended to while `git status` stays clean. The path you put in `GILFOYLE_PROJECT_MEMORY_DIR` is yours and is followed as given; what is inside it is not.
-- **Health.** `scripts/init` and `scripts/mem-doctor` report it when it exists, and warn when they ignore it: `GILFOYLE_PROJECT_MEMORY_DIR` points at a directory without `kb/`, or the tier contains a symlink.
+- **Health.** `scripts/init` and `scripts/mem-doctor` report it when it exists, and warn when they ignore it: `GILFOYLE_PROJECT_MEMORY_DIR` points at a directory without `kb/`, or the tier contains a symlink. `mem-doctor` also warns when git ignores the tier, since ignored memory never reaches a clone.
 
 ## Directory Structure
 

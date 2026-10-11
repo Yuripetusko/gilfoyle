@@ -98,13 +98,33 @@ echo ""
 # --- Check project tier ---
 # Reported only when it exists (or is misconfigured). Uncommitted changes are the
 # normal state of project memory between writing it and merging the PR: not a warning.
+# Ignored files are: git status leaves them out, and no clone ever gets them.
 if resolve_project_memory_dir "$MEMORY_DIR"; then
   echo "Project Tier:"
   entries=$(count_entries "$PROJECT_MEMORY_DIR")
   if git -C "$PROJECT_MEMORY_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    # check-ignore skips tracked files: they are committed whatever the rules say.
+    # With --no-index it answers for the next new kb file instead.
+    ignored=0
+    ignored_example="kb/facts.md"
+    while IFS= read -r f; do
+      if git -C "$PROJECT_MEMORY_DIR" check-ignore -q -- "$f" 2>/dev/null; then
+        [[ "$ignored" -gt 0 ]] || ignored_example="$f"
+        ignored=$((ignored + 1))
+      fi
+    done < <(find "$PROJECT_MEMORY_DIR" -path "*/kb/*.md" -type f)
     uncommitted=$(git -C "$PROJECT_MEMORY_DIR" status --porcelain -- . | wc -l | tr -d ' ')
-    if [[ "$uncommitted" -gt 0 ]]; then
+    tracked=$(git -C "$PROJECT_MEMORY_DIR" ls-files -- . | wc -l | tr -d ' ')
+    if git -C "$PROJECT_MEMORY_DIR" check-ignore -q --no-index -- kb/facts.md 2>/dev/null; then
+      check_warn "$PROJECT_MEMORY_DIR: $entries entries, ignored by git. None of it reaches the repo unless force-added"
+      echo "   Find the rule: git -C '$PROJECT_MEMORY_DIR' check-ignore -v --no-index kb/facts.md"
+    elif [[ "$ignored" -gt 0 ]]; then
+      check_warn "$PROJECT_MEMORY_DIR: $entries entries, $ignored file(s) ignored by git. Those never reach the repo"
+      echo "   Find the rule: git -C '$PROJECT_MEMORY_DIR' check-ignore -v --no-index '$ignored_example'"
+    elif [[ "$uncommitted" -gt 0 ]]; then
       check_ok "$PROJECT_MEMORY_DIR: $entries entries, $uncommitted uncommitted changes (commit them with the project)"
+    elif [[ "$tracked" -eq 0 ]]; then
+      check_ok "$PROJECT_MEMORY_DIR: $entries entries, nothing committed yet (git doesn't track empty directories)"
     else
       check_ok "$PROJECT_MEMORY_DIR: $entries entries (committed)"
     fi
