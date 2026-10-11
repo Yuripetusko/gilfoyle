@@ -26,6 +26,12 @@ if [[ ! -d "$TARGET" ]]; then
     exit 1
 fi
 
+# Checked up front: failing at the templates step leaves a half-synced, unrenamed target.
+if ! command -v rsync >/dev/null 2>&1; then
+    echo "Error: rsync not found. Install it; the templates sync needs it." >&2
+    exit 1
+fi
+
 echo "Syncing gilfoyle → $TARGET"
 echo ""
 
@@ -86,8 +92,9 @@ sedi() {
 }
 
 find "$TARGET/scripts" "$TARGET/reference" "$TARGET/templates" -type f | while read -r file; do
-    # Skip binary files
-    if file "$file" | grep -q "text"; then
+    # Skip binary files. Not via `file`: where it isn't installed, that check failed
+    # quietly and every rename was skipped.
+    if grep -Iq . "$file"; then
         sedi \
             -e 's|GILFOYLE_NO_CACHE|SRE_NO_CACHE|g' \
             -e 's|GILFOYLE_INIT_TIMEOUT|SRE_INIT_TIMEOUT|g' \

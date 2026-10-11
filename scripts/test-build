@@ -132,28 +132,37 @@ else
     fail "build-skill is NOT idempotent"
 fi
 
-# Test 13: project memory names survive the sync rename (own temp target, always runs)
-SYNC_TMP=$(mktemp -d)
-mkdir -p "$SYNC_TMP/scripts" "$SYNC_TMP/reference" "$SYNC_TMP/templates"
-cp "$SKILL_DIR/scripts/"* "$SYNC_TMP/scripts/"
-if "$SCRIPT_DIR/sync-to-skills" "$SYNC_TMP" >/dev/null 2>&1; then
-    if grep -rq "SRE_PROJECT_MEMORY_DIR" "$SYNC_TMP/scripts/mem-write" "$SYNC_TMP/scripts/lib-memory" "$SYNC_TMP/reference/memory-system.md" \
-       && grep -rq "\.axiom-sre/memory" "$SYNC_TMP/scripts/lib-memory" "$SYNC_TMP/reference/memory-system.md"; then
-        pass "synced output uses SRE_PROJECT_MEMORY_DIR and .axiom-sre/memory"
-    else
-        fail "synced output is missing SRE_PROJECT_MEMORY_DIR or .axiom-sre/memory"
-    fi
-    LEAKED=$(grep -rn "GILFOYLE_PROJECT\|\.gilfoyle/memory" "$SYNC_TMP" 2>/dev/null || true)
-    if [[ -z "$LEAKED" ]]; then
-        pass "no GILFOYLE_PROJECT or .gilfoyle/memory in synced output"
-    else
-        fail "project memory names leaked through sync:"
-        echo "$LEAKED" | head -10
-    fi
+# Test 13: project memory names survive the sync rename (own temp target).
+# Runs with a `file` that cannot run: the renames must not depend on optional tools.
+# rsync is a hard requirement of sync-to-skills; without it this is skipped, loudly.
+if ! command -v rsync >/dev/null 2>&1; then
+    echo "  ~ skipped: sync rename checks (rsync not installed; sync-to-skills needs it)"
 else
-    fail "sync-to-skills failed on a temp target"
+    SYNC_TMP=$(mktemp -d)
+    NO_FILE_BIN=$(mktemp -d)
+    printf '#!/bin/sh\necho "file: not installed" >&2\nexit 127\n' > "$NO_FILE_BIN/file"
+    chmod +x "$NO_FILE_BIN/file"
+    mkdir -p "$SYNC_TMP/scripts" "$SYNC_TMP/reference" "$SYNC_TMP/templates"
+    cp "$SKILL_DIR/scripts/"* "$SYNC_TMP/scripts/"
+    if PATH="$NO_FILE_BIN:$PATH" "$SCRIPT_DIR/sync-to-skills" "$SYNC_TMP" >/dev/null 2>&1; then
+        if grep -rq "SRE_PROJECT_MEMORY_DIR" "$SYNC_TMP/scripts/mem-write" "$SYNC_TMP/scripts/lib-memory" "$SYNC_TMP/reference/memory-system.md" \
+           && grep -rq "\.axiom-sre/memory" "$SYNC_TMP/scripts/lib-memory" "$SYNC_TMP/reference/memory-system.md"; then
+            pass "synced output uses SRE_PROJECT_MEMORY_DIR and .axiom-sre/memory"
+        else
+            fail "synced output is missing SRE_PROJECT_MEMORY_DIR or .axiom-sre/memory"
+        fi
+        LEAKED=$(grep -rn "GILFOYLE_PROJECT\|\.gilfoyle/memory" "$SYNC_TMP" 2>/dev/null || true)
+        if [[ -z "$LEAKED" ]]; then
+            pass "no GILFOYLE_PROJECT or .gilfoyle/memory in synced output"
+        else
+            fail "project memory names leaked through sync:"
+            echo "$LEAKED" | head -10
+        fi
+    else
+        fail "sync-to-skills failed on a temp target"
+    fi
+    rm -rf "$SYNC_TMP" "$NO_FILE_BIN"
 fi
-rm -rf "$SYNC_TMP"
 
 echo ""
 
