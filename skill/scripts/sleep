@@ -499,6 +499,8 @@ echo "Config: $CONFIG_DIR"
 echo "Memory: $MEMORY_DIR"
 if resolve_project_memory_dir "$MEMORY_DIR"; then
   echo "Project: $PROJECT_MEMORY_DIR (skipped: committed files are never rewritten)"
+elif [[ "${PROJECT_MEMORY_STATUS:-}" == "org-overlap" ]]; then
+  echo "Project: $PROJECT_MEMORY_DIR (skipped, and so is the org tier overlapping it: $PROJECT_MEMORY_PERSONAL)"
 fi
 if [[ "$AUTO" == true ]]; then
   echo "Mode: auto preset"
@@ -509,6 +511,19 @@ echo
 
 targets=()
 collect_targets targets
+
+# An org that resolves onto the project tier is the project's files, whatever orgs/ says.
+# Not a target: rewriting it here would also commit and push it as org memory.
+if [[ "${PROJECT_MEMORY_STATUS:-}" == "org-overlap" ]]; then
+  kept=()
+  for dir in ${targets[@]+"${targets[@]}"}; do
+    canonical=$(CDPATH='' cd -P -- "$dir" 2>/dev/null && pwd -P) || canonical="$dir"
+    case "$canonical/" in "$PROJECT_MEMORY_DIR"/*) continue ;; esac
+    case "$PROJECT_MEMORY_DIR/" in "$canonical"/*) continue ;; esac
+    kept+=("$dir")
+  done
+  targets=(${kept[@]+"${kept[@]}"})
+fi
 if [[ ${#targets[@]} -eq 0 ]]; then
   echo "No memory targets found."
   exit 0

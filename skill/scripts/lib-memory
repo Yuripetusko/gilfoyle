@@ -98,9 +98,11 @@ resolve_project_memory_dir() {
 
   # An org directory that resolves onto, into or around the project tier (a symlink in
   # orgs/ is enough) makes sleep and mem-share rewrite and push project files as org memory.
-  if [[ -n "$personal_dir" ]] && [[ -d "$personal_dir/orgs" ]]; then
+  # Enumerated through the canonical personal path: the raw one may run through a
+  # directory that does not exist yet (missing/../alias).
+  if [[ -n "$personal_canonical" ]] && [[ -d "$personal_canonical/orgs" ]]; then
     local org_dir org_canonical
-    for org_dir in "$personal_dir"/orgs/*; do
+    for org_dir in "$personal_canonical"/orgs/*; do
       [[ -d "$org_dir" ]] || continue
       org_canonical=$(CDPATH='' cd -P -- "$org_dir" 2>/dev/null && pwd -P) || continue
       case "$PROJECT_MEMORY_DIR/" in

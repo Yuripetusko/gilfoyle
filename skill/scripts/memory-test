@@ -696,6 +696,20 @@ def test_project_write_unresolvable(result: TestResult, verbose: bool) -> bool:
                     init_read_command(init.stdout) is None, init.stdout, verbose)
 
     with sandbox() as box:
+        # The org scan has to go through the canonical personal path, not a raw one with a missing dir.
+        repo = box.make_repo()
+        project = box.make_project_memory(repo)
+        (box.config / "memory" / "orgs").mkdir(parents=True)
+        (box.config / "memory" / "orgs" / "team").symlink_to(project)
+        (box.root / "base").mkdir()
+        (box.root / "base" / "alias").symlink_to(box.config)
+        env = {"GILFOYLE_CONFIG_DIR": f"{box.root}/base/missing/../alias"}
+        proc = box.run("mem-write", "--project", "facts", "via-alias", "would be pushed with the org", cwd=repo,
+                       extra_env=env)
+        result.test("config dir through missing/../alias, org linking to the project: refused",
+                    proc.returncode != 0 and "overlaps" in proc.stderr, proc.stdout + proc.stderr, verbose)
+
+    with sandbox() as box:
         # The ".." brings an existing link back into reach: it has to be followed too.
         org = box.config / "memory" / "orgs" / "team"
         (org / "kb").mkdir(parents=True)
@@ -1157,6 +1171,24 @@ def test_sleep_skips_project(result: TestResult, verbose: bool) -> bool:
         proc = box.run("sleep", "--project", cwd=repo)
         result.test("sleep --project: rejected", proc.returncode != 0 and "project tier" in proc.stderr,
                     proc.stderr, verbose)
+
+    with sandbox() as box:
+        # An org entry linking to the project tier: sleep must not rewrite (or push) it as org memory.
+        repo = box.make_repo()
+        project = box.make_project_memory(repo)
+        project_file = project / "kb" / "facts.md"
+        project_file.write_text(duplicated)
+        (box.config / "memory" / "orgs").mkdir(parents=True)
+        (box.config / "memory" / "orgs" / "team").symlink_to(project)
+        personal_file = box.personal_kb / "facts.md"
+        personal_file.write_text(duplicated)
+        proc = box.run("sleep", cwd=repo)
+        result.test("sleep with an org linking to the project tier: exits 0", proc.returncode == 0,
+                    proc.stdout + proc.stderr, verbose)
+        result.test("sleep with an org linking to the project tier: project file unchanged",
+                    project_file.read_text() == duplicated, project_file.read_text(), verbose)
+        result.test("sleep with an org linking to the project tier: personal still compacted",
+                    entry_count(personal_file, "same-key") == 1, personal_file.read_text(), verbose)
 
     return result.failed == 0
 
