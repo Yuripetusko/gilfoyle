@@ -72,7 +72,8 @@ resolve_project_memory_dir() {
   fi
   PROJECT_MEMORY_DIR="$canonical"
 
-  links=$(find "$PROJECT_MEMORY_DIR" -type l 2>/dev/null) || true
+  # .git is skipped: a checkout never delivers it, and nothing reads or writes there.
+  links=$(find "$PROJECT_MEMORY_DIR" -name .git -prune -o -type l -print 2>/dev/null) || true
   if [[ -n "$links" ]]; then
     PROJECT_MEMORY_LINK="${links%%$'\n'*}"
     PROJECT_MEMORY_STATUS="symlink"

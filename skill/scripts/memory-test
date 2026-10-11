@@ -743,6 +743,19 @@ def test_project_reporting(result: TestResult, verbose: bool) -> bool:
                     init.stdout, verbose)
 
     with sandbox() as box:
+        # init's printed command is the only documented way to read the tier: it has to survive spaces.
+        box.configure()
+        repo = box.make_repo("my project")
+        box.make_project_memory(repo)
+        box.run("mem-write", "--project", "facts", "spaced", "found despite the space", cwd=repo)
+        init = box.run("init", cwd=repo)
+        command = init_read_command(init.stdout)
+        read = subprocess.run(["bash", "-c", command], capture_output=True, text=True) if command else None
+        result.test("path with a space: init's read command reads the entry",
+                    read is not None and "found despite the space" in read.stdout,
+                    init.stdout if read is None else read.stdout + read.stderr, verbose)
+
+    with sandbox() as box:
         repo = box.make_repo()
         project = box.make_project_memory(repo)
         (project / "kb" / "facts.md").symlink_to(box.root / "elsewhere.md")
@@ -915,6 +928,20 @@ def test_project_symlinks(result: TestResult, verbose: bool) -> bool:
             result.test(f"{label}: init's read command reads the entry",
                         read is not None and "reached through the user's link" in read.stdout,
                         init.stdout if read is None else read.stdout + read.stderr, verbose)
+
+    with sandbox() as box:
+        # A dedicated memory repo as the env var target: links in its .git are git's business.
+        box.configure()
+        repo = box.make_repo("memory-repo")
+        (repo / "kb").mkdir()
+        (repo / ".git" / "hooks" / "pre-commit").symlink_to(box.root / "shared-hook")
+        plain = box.root / "plain"
+        plain.mkdir()
+        write = box.run("mem-write", "--project", "facts", "own-repo", "lives in its own repo", cwd=plain,
+                        extra_env={"GILFOYLE_PROJECT_MEMORY_DIR": str(repo)})
+        result.test("memory repo with a linked git hook: still usable",
+                    write.returncode == 0 and entry_count(repo / "kb" / "facts.md", "own-repo") == 1,
+                    write.stdout + write.stderr, verbose)
 
     for doc in (SKILL_DIR / "reference" / "memory-system.md", TEMPLATES_DIR / "README.memory.md"):
         # Reading must go through init's vetted path; a self-resolved `cat` follows links.
