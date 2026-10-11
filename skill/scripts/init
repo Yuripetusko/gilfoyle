@@ -41,13 +41,14 @@ FIRST_RUN=false
 # Reported, never created: this tier belongs to the project's repo, not to us.
 # Also runs on the first-run early exit: committed knowledge doesn't wait for a config.
 report_project_memory() {
-    local file_count quoted_dir
+    local file_count quoted_kb
     if resolve_project_memory_dir "$CONFIG_DIR/memory"; then
         file_count=$(find "$PROJECT_MEMORY_DIR/kb" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
         # Quoted: this command is the only sanctioned way to read the tier, spaces included.
-        quoted_dir=$(printf '%q' "$PROJECT_MEMORY_DIR")
+        # It starts at kb/ itself: the tier may be a whole repo, with other kb/ trees and .git in it.
+        quoted_kb=$(printf '%q' "$PROJECT_MEMORY_DIR/kb")
         echo ""
-        echo "Project memory (read with: find $quoted_dir -path '*/kb/*.md' -type f -exec cat {} +):"
+        echo "Project memory (read with: find $quoted_kb -name '*.md' -type f -exec cat {} +):"
         echo "  ${file_count} files (${PROJECT_MEMORY_DIR}/kb) — entries are [project]; personal > project > org"
     elif project_memory_misconfigured; then
         echo ""

@@ -108,7 +108,7 @@ done
 
 # Project tier: only if scripts/init lists it, and only with the command it prints.
 # init vets the tier first (no symlinks) and prints its real path. Don't resolve it yourself.
-find <path printed by scripts/init> -path '*/kb/*.md' -type f -exec cat {} +
+find <kb path printed by scripts/init> -name '*.md' -type f -exec cat {} +
 ```
 
 ### End of Incident

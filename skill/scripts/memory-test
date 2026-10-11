@@ -671,6 +671,17 @@ def test_project_write_unresolvable(result: TestResult, verbose: bool) -> bool:
                     proc.returncode != 0 and "contains the personal memory directory" in proc.stderr,
                     proc.stdout + proc.stderr, verbose)
 
+    with sandbox() as box:
+        # A config dir spelled with ".." through a missing directory still lands on the org tier.
+        org = box.config / "memory" / "orgs" / "team"
+        (org / "kb").mkdir(parents=True)
+        env = {"GILFOYLE_CONFIG_DIR": f"{box.config}/missing/..", "GILFOYLE_PROJECT_MEMORY_DIR": str(org)}
+        proc = box.run("mem-write", "--project", "facts", "dotdot", "would be pushed with the org", extra_env=env)
+        result.test("config dir with '..' through a missing dir: org tier still refused",
+                    proc.returncode != 0 and "inside the personal memory directory" in proc.stderr
+                    and not any("dotdot" in p.read_text() for p in org.rglob("*.md") if p.is_file()),
+                    proc.stdout + proc.stderr, verbose)
+
     return result.failed == 0
 
 
@@ -783,6 +794,25 @@ def test_project_reporting(result: TestResult, verbose: bool) -> bool:
         result.test("first run: init still lists project memory",
                     init_read_command(init.stdout) is not None and str(project) in init_read_command(init.stdout),
                     init.stdout, verbose)
+
+    with sandbox() as box:
+        # The tier can be a whole repo: init's read command must not pick up other kb/ trees or .git.
+        box.configure()
+        tier = box.make_repo("memory-repo")
+        (tier / "kb").mkdir()
+        (tier / "docs" / "kb").mkdir(parents=True)
+        (tier / "docs" / "kb" / "old.md").write_text("STALE-DOCS-KB\n")
+        (tier / ".git" / "kb").mkdir()
+        (tier / ".git" / "kb" / "private.md").write_text("PRIVATE-GIT-KB\n")
+        env = {"GILFOYLE_PROJECT_MEMORY_DIR": str(tier)}
+        box.run("mem-write", "--project", "facts", "root-kb", "the only kb that counts", cwd=tier, extra_env=env)
+        init = box.run("init", cwd=tier, extra_env=env)
+        command = init_read_command(init.stdout)
+        read = subprocess.run(["bash", "-c", command], capture_output=True, text=True) if command else None
+        result.test("tier is a whole repo: init's read command reads only the root kb/",
+                    read is not None and "the only kb that counts" in read.stdout
+                    and "STALE-DOCS-KB" not in read.stdout and "PRIVATE-GIT-KB" not in read.stdout,
+                    init.stdout if read is None else read.stdout + read.stderr, verbose)
 
     with sandbox() as box:
         # init's printed command is the only documented way to read the tier: it has to survive spaces.

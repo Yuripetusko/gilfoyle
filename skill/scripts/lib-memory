@@ -125,7 +125,19 @@ _canonical_path() {
   done
   base=$(CDPATH='' cd -P -- "$path" 2>/dev/null && pwd -P) || return 1
   [[ "$base" != "/" ]] || base=""
-  printf '%s%s\n' "$base" "$rest"
+  # The unresolved part doesn't exist, so it holds no links: "." and ".." are plain text.
+  local component
+  while [[ -n "$rest" ]]; do
+    rest="${rest#/}"
+    component="${rest%%/*}"
+    rest="${rest#"$component"}"
+    case "$component" in
+      ''|.) ;;
+      ..) base="${base%/*}" ;;
+      *) base="$base/$component" ;;
+    esac
+  done
+  printf '%s\n' "${base:-/}"
 }
 
 # _project_memory_link <path>

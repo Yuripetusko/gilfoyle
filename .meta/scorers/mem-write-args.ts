@@ -58,6 +58,8 @@ export function parseMemWriteCliArgs(input: string): MemWriteArgs | null {
 
   let org = false;
   let project = false;
+  // mem-write keeps overwriting TYPE and validates the last value once, after the loop.
+  let type = 'fact';
   for (let word = rest.match(WORD); word; word = rest.match(WORD)) {
     const option = unquote(word[1]);
     if (!option.startsWith('-')) break;
@@ -73,8 +75,11 @@ export function parseMemWriteCliArgs(input: string): MemWriteArgs | null {
     if (!value) return null;
     rest = rest.slice(value[0].length);
     if (option === '--org') org = true;
-    if (option === '--type' && !VALID_TYPES.includes(unquote(value[1]))) return null;
+    if (option === '--type') type = unquote(value[1]);
   }
+
+  // mem-write: "Invalid type"
+  if (!VALID_TYPES.includes(type)) return null;
 
   // mem-write: "--org and --project are mutually exclusive"
   if (org && project) return null;

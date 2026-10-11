@@ -11,12 +11,14 @@ const accepted: [string, string, string][] = [
   ['scripts/mem-write --org team --type pattern --tags "db, timeout" --pin patterns conn-pool "Pool exhaustion"', 'patterns', 'conn-pool'],
   ['scripts/mem-write --type query --tags \'cs-reporting\' queries "top-ingesters" "[\'dataset\'] | summarize count()"', 'queries', 'top-ingesters'],
   ['bash scripts/mem-write --pin incidents "2026-10-01-outage" "Root cause: connection pool leak"', 'incidents', '2026-10-01-outage'],
+  ['scripts/mem-write --type bogus --type fact facts key "long enough content to count"', 'facts', 'key'],
 ];
 
 const rejected: [string, string][] = [
   ['scripts/mem-write --org team --project facts key "long content"', '--org with --project'],
   ['scripts/mem-write --project --org team facts key "long content"', '--project with --org'],
   ['scripts/mem-write --type finding facts key "long content"', 'invalid --type'],
+  ['scripts/mem-write --type fact --type bogus facts key "long content"', 'last --type invalid'],
   ['scripts/mem-write --verbose facts key "long content"', 'unknown option'],
   ['scripts/mem-write --tags=prod facts key "long content"', 'unknown option form'],
   ['scripts/mem-write --org', '--org without a value'],
