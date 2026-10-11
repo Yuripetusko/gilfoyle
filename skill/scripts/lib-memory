@@ -108,36 +108,28 @@ resolve_project_memory_dir() {
 }
 
 # _canonical_path <path>
-# Physical path of <path>, which need not exist yet: the deepest existing ancestor is
-# resolved and the rest appended. The overlap checks must not wait for the personal
-# directory to be created, config.toml is already sitting next to where it will be.
+# Physical path of <path>, which need not exist yet. Walks it one component at a time
+# and resolves everything that exists, so a link a ".." brings back into reach is
+# followed too. The overlap checks must not wait for the personal directory to be
+# created: config.toml is already sitting next to where it will be.
 _canonical_path() {
-  local path="$1" rest="" base=""
-  while [[ ! -d "$path" ]]; do
-    if [[ "$path" != */* ]]; then
-      rest="/$path$rest"
-      path="."
-      break
-    fi
-    rest="/${path##*/}$rest"
-    path="${path%/*}"
-    [[ -n "$path" ]] || path="/"
-  done
-  base=$(CDPATH='' cd -P -- "$path" 2>/dev/null && pwd -P) || return 1
-  [[ "$base" != "/" ]] || base=""
-  # The unresolved part doesn't exist, so it holds no links: "." and ".." are plain text.
-  local component
-  while [[ -n "$rest" ]]; do
-    rest="${rest#/}"
-    component="${rest%%/*}"
-    rest="${rest#"$component"}"
+  local path="$1" result="" component
+  [[ "$path" == /* ]] || path="$PWD/$path"
+  while [[ -n "$path" ]]; do
+    path="${path#/}"
+    component="${path%%/*}"
+    path="${path#"$component"}"
     case "$component" in
-      ''|.) ;;
-      ..) base="${base%/*}" ;;
-      *) base="$base/$component" ;;
+      ''|.) continue ;;
+      ..) result="${result%/*}" ;;
+      *) result="$result/$component" ;;
     esac
+    if [[ -n "$result" ]] && [[ -d "$result" ]]; then
+      result=$(CDPATH='' cd -P -- "$result" 2>/dev/null && pwd -P) || return 1
+      [[ "$result" != "/" ]] || result=""
+    fi
   done
-  printf '%s\n' "${base:-/}"
+  printf '%s\n' "${result:-/}"
 }
 
 # _project_memory_link <path>

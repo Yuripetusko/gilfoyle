@@ -19,6 +19,7 @@ const rejected: [string, string][] = [
   ['scripts/mem-write --project --org team facts key "long content"', '--project with --org'],
   ['scripts/mem-write --type finding facts key "long content"', 'invalid --type'],
   ['scripts/mem-write --type fact --type bogus facts key "long content"', 'last --type invalid'],
+  ['scripts/mem-write--project facts key "long enough content to score"', 'no separator after the executable'],
   ['scripts/mem-write --verbose facts key "long content"', 'unknown option'],
   ['scripts/mem-write --tags=prod facts key "long content"', 'unknown option form'],
   ['scripts/mem-write --org', '--org without a value'],

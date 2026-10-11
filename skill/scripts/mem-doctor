@@ -101,9 +101,10 @@ echo ""
 # Ignored files are: git status leaves them out, and no clone ever gets them.
 if resolve_project_memory_dir "$MEMORY_DIR"; then
   echo "Project Tier:"
-  entries=$(count_entries "$PROJECT_MEMORY_DIR")
+  entries=$(count_entries "$PROJECT_MEMORY_DIR/kb")
   # rev-parse exits 0 and prints "false" inside a bare repo or a .git directory.
   if [[ "$(git -C "$PROJECT_MEMORY_DIR" rev-parse --is-inside-work-tree 2>/dev/null)" == "true" ]]; then
+    # Everything is scoped to kb/: the tier can be a whole repo, and its README is not memory.
     # check-ignore skips tracked files: they are committed whatever the rules say.
     # The whole-tier probe asks about kb/ itself, so only a directory-wide rule matches it;
     # a rule naming one file is left to the per-file count.
@@ -114,9 +115,9 @@ if resolve_project_memory_dir "$MEMORY_DIR"; then
         [[ "$ignored" -gt 0 ]] || ignored_example="$f"
         ignored=$((ignored + 1))
       fi
-    done < <(find "$PROJECT_MEMORY_DIR" -path "*/kb/*.md" -type f)
-    uncommitted=$(git -C "$PROJECT_MEMORY_DIR" status --porcelain -- . | wc -l | tr -d ' ')
-    tracked=$(git -C "$PROJECT_MEMORY_DIR" ls-files -- . | wc -l | tr -d ' ')
+    done < <(find "$PROJECT_MEMORY_DIR/kb" -name "*.md" -type f)
+    uncommitted=$(git -C "$PROJECT_MEMORY_DIR" status --porcelain -- kb | wc -l | tr -d ' ')
+    tracked=$(git -C "$PROJECT_MEMORY_DIR" ls-files -- kb | wc -l | tr -d ' ')
     if git -C "$PROJECT_MEMORY_DIR" check-ignore -q --no-index -- kb 2>/dev/null; then
       # Tracked files stay committed under an ignore rule; only new ones are shut out.
       if [[ "$tracked" -eq 0 ]]; then

@@ -53,6 +53,9 @@ export function parseMemWriteInput(input: unknown): MemWriteArgs | null {
 }
 
 export function parseMemWriteCliArgs(input: string): MemWriteArgs | null {
+  // `scripts/mem-write--project` is a typo the shell rejects, not a call.
+  if (/^(?:bash\s+)?(?:\.\/)?scripts\/mem-write\S/.test(input)) return null;
+
   // Remove any leading script path (handles ./scripts/, bash scripts/, etc.)
   let rest = input.replace(/^(?:bash\s+)?(?:\.\/)?scripts\/mem-write\s*/, '').trim();
 
