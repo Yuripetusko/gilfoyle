@@ -21,7 +21,8 @@
 #
 # Sets PROJECT_MEMORY_DIR (canonical when ok, empty if nothing to point at),
 # PROJECT_MEMORY_LINK (the offending path, for "symlink") and PROJECT_MEMORY_STATUS:
-#   ok | env-missing | not-git | default-missing | same-as-personal | inside-personal | symlink
+#   ok | env-missing | not-git | default-missing | same-as-personal | inside-personal |
+#   contains-personal | symlink
 # Returns 0 only for "ok". Callers run under set -e: call it from an `if`.
 resolve_project_memory_dir() {
   local personal_dir="${1:-}"
@@ -84,6 +85,15 @@ resolve_project_memory_dir() {
         return 1
         ;;
     esac
+    # The other way round, the personal tier (and config.toml next to it) would be read
+    # as project memory, rewritten by sleep and staged with the project.
+    case "$personal_canonical/" in
+      "$PROJECT_MEMORY_DIR"/*)
+        PROJECT_MEMORY_PERSONAL="$personal_canonical"
+        PROJECT_MEMORY_STATUS="contains-personal"
+        return 1
+        ;;
+    esac
   fi
 
   # .git is skipped: a checkout never delivers it, and nothing reads or writes there.
@@ -113,7 +123,7 @@ _project_memory_link() {
 # opposed to there being none. Worth a warning; silence would look like "no tier".
 project_memory_misconfigured() {
   case "${PROJECT_MEMORY_STATUS:-}" in
-    env-missing|same-as-personal|inside-personal|symlink) return 0 ;;
+    env-missing|same-as-personal|inside-personal|contains-personal|symlink) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -140,6 +150,10 @@ project_memory_problem() {
     inside-personal)
       echo "  $PROJECT_MEMORY_DIR is inside the personal memory directory ($PROJECT_MEMORY_PERSONAL)."
       echo "  That is an org tier or part of yours, and org tiers get committed and pushed. Not a project tier."
+      ;;
+    contains-personal)
+      echo "  $PROJECT_MEMORY_DIR contains the personal memory directory ($PROJECT_MEMORY_PERSONAL)."
+      echo "  Committing the tier would commit your personal memory, and config.toml next to it. Move the config dir out of the repo."
       ;;
     symlink)
       echo "  $PROJECT_MEMORY_LINK is a symlink to '$(readlink "$PROJECT_MEMORY_LINK" 2>/dev/null || true)'."

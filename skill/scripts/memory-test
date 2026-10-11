@@ -645,6 +645,21 @@ def test_project_write_unresolvable(result: TestResult, verbose: bool) -> bool:
                         not any("leak" in p.read_text() for p in org.rglob("*.md") if p.is_file()),
                         "the org tier was written to", verbose)
 
+    with sandbox() as box:
+        # The config dir inside the project tier: personal memory and config.toml would ride along.
+        repo = box.make_repo()
+        project = box.make_project_memory(repo)
+        (project / "memory" / "kb").mkdir(parents=True)
+        env = {"GILFOYLE_CONFIG_DIR": str(project)}
+        proc = box.run("mem-write", "--project", "facts", "nested", "personal inside project", cwd=repo,
+                       extra_env=env)
+        init = box.run("init", cwd=repo, extra_env=env)
+        result.test("config dir inside the project tier: mem-write refused, saying why",
+                    proc.returncode != 0 and "contains the personal memory directory" in proc.stderr,
+                    proc.stdout + proc.stderr, verbose)
+        result.test("config dir inside the project tier: init does not list it for reading",
+                    init_read_command(init.stdout) is None, init.stdout, verbose)
+
     return result.failed == 0
 
 
