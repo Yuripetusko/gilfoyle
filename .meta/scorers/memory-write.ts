@@ -1,5 +1,6 @@
 import { Scorer } from 'axiom/ai/evals';
 import type { EvalInput, EvalOutput, ToolCall } from '../harness/types.js';
+import { parseMemWriteInput } from './mem-write-args.js';
 
 /**
  * Memory Write Scorer (T03)
@@ -37,9 +38,7 @@ export const MemoryWriteScorer = Scorer<{
     }
 
     // Parse mem-write calls to check category and content
-    // Expected format: scripts/mem-write <category> <key> <content>
-    // or with --org: scripts/mem-write --org <name> <category> <key> <content>
-    // or with --project: scripts/mem-write --project <category> <key> <content>
+    // Format: scripts/mem-write [options] <category> <key> <content>, options parsed as mem-write does
     const validWrites: { category: string; key: string; contentLength: number }[] = [];
     const invalidWrites: { input: string; reason: string }[] = [];
 
@@ -108,82 +107,3 @@ export const MemoryWriteScorer = Scorer<{
     };
   }
 );
-
-function parseMemWriteInput(input: unknown): { category: string; key: string; content: string } | null {
-  if (input && typeof input === 'object') {
-    const obj = input as Record<string, unknown>;
-    const category = asString(obj.category);
-    const key = asString(obj.key);
-    const content = asString(obj.value ?? obj.content);
-    if (category && key && content) {
-      return { category, key, content };
-    }
-  }
-
-  if (typeof input === 'string') {
-    const trimmed = input.trim();
-    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-      try {
-        const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-        const category = asString(parsed.category);
-        const key = asString(parsed.key);
-        const content = asString(parsed.value ?? parsed.content);
-        if (category && key && content) {
-          return { category, key, content };
-        }
-      } catch {
-        // Fall back to CLI parser below.
-      }
-    }
-    return parseMemWriteCliArgs(trimmed);
-  }
-
-  return null;
-}
-
-function parseMemWriteCliArgs(input: string): { category: string; key: string; content: string } | null {
-  // Remove any leading script path (handles ./scripts/, bash scripts/, etc.)
-  let cleaned = input.replace(/^(?:bash\s+)?(?:\.\/)?scripts\/mem-write\s*/, '').trim();
-
-  // Handle --org flag
-  if (cleaned.startsWith('--org')) {
-    const orgMatch = cleaned.match(/^--org\s+\S+\s+(.+)/);
-    if (orgMatch) {
-      cleaned = orgMatch[1];
-    } else {
-      return null;
-    }
-  }
-
-  // Handle --project flag (takes no argument)
-  if (cleaned.startsWith('--project')) {
-    cleaned = cleaned.replace(/^--project\s+/, '');
-  }
-
-  // Split into category, key, content
-  // Format: <category> <key> <content>
-  // Content may be quoted or contain spaces
-  const parts = cleaned.match(/^(\S+)\s+("[^"]+"|'[^']+'|\S+)\s+(.+)/);
-  if (!parts) {
-    // Try simpler split
-    const simpleParts = cleaned.split(/\s+/);
-    if (simpleParts.length >= 3) {
-      return {
-        category: simpleParts[0],
-        key: simpleParts[1].replace(/^["']|["']$/g, ''),
-        content: simpleParts.slice(2).join(' '),
-      };
-    }
-    return null;
-  }
-
-  return {
-    category: parts[1],
-    key: parts[2].replace(/^["']|["']$/g, ''),
-    content: parts[3],
-  };
-}
-
-function asString(v: unknown): string {
-  return typeof v === 'string' ? v.trim() : '';
-}
