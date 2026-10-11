@@ -327,7 +327,7 @@ echo "Run scripts/discover-<tool> to see available assets before querying."
 ORGS_DIR="$CONFIG_DIR/memory/orgs"
 if [[ -d "$ORGS_DIR" ]] && [[ -n "$(ls -A "$ORGS_DIR" 2>/dev/null)" ]]; then
     echo ""
-    echo "Org memory (read with: find $ORGS_DIR -path '*/kb/*.md' -type f -exec cat {} +):"
+    echo "Org memory (read with: find $(printf '%q' "$ORGS_DIR") -path '*/kb/*.md' -type f -exec cat {} +):"
     for org_dir in "$ORGS_DIR"/*/; do
         [[ -d "$org_dir" ]] || continue
         org_name=$(basename "$org_dir")

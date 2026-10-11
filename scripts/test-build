@@ -243,10 +243,11 @@ if [[ -n "$SKILLS_SRE" && -d "$SKILLS_SRE" ]]; then
     fi
 
     # Test: idempotency - sync twice produces same result
-    BEFORE=$(find "$SKILLS_SRE" -type f -exec md5 {} + 2>/dev/null | sort)
+    # cksum, not md5: md5 is macOS-only, so on Linux both sides were empty and this always passed.
+    BEFORE=$(find "$SKILLS_SRE" -type f -exec cksum {} + 2>/dev/null | sort)
     "$SCRIPT_DIR/sync-to-skills" "$SKILLS_SRE" >/dev/null 2>&1
-    AFTER=$(find "$SKILLS_SRE" -type f -exec md5 {} + 2>/dev/null | sort)
-    if [[ "$BEFORE" == "$AFTER" ]]; then
+    AFTER=$(find "$SKILLS_SRE" -type f -exec cksum {} + 2>/dev/null | sort)
+    if [[ -n "$BEFORE" ]] && [[ "$BEFORE" == "$AFTER" ]]; then
         pass "sync-to-skills is idempotent"
     else
         fail "sync-to-skills is NOT idempotent"
