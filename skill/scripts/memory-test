@@ -696,6 +696,50 @@ def test_project_write_unresolvable(result: TestResult, verbose: bool) -> bool:
                     init_read_command(init.stdout) is None, init.stdout, verbose)
 
     with sandbox() as box:
+        # A hidden org name is still an org: org-add, mem-write --org and mem-share take it by path.
+        repo = box.make_repo()
+        project = box.make_project_memory(repo)
+        (box.config / "memory" / "orgs").mkdir(parents=True)
+        (box.config / "memory" / "orgs" / ".team").symlink_to(project)
+        proj = box.run("mem-write", "--project", "facts", "hidden", "via a hidden org", cwd=repo)
+        org = box.run("mem-write", "--org", ".team", "facts", "hidden-org", "written as org memory", cwd=repo)
+        share = box.run("mem-share", ".team", "share the project", cwd=repo)
+        result.test("hidden org linking to the project tier: mem-write --project refused",
+                    proj.returncode != 0 and "overlaps" in proj.stderr, proj.stdout + proj.stderr, verbose)
+        result.test("hidden org linking to the project tier: mem-write --org refused",
+                    org.returncode != 0 and "resolves onto project memory" in org.stderr
+                    and not any("hidden-org" in f.read_text() for f in project.rglob("*.md") if f.is_file()),
+                    org.stdout + org.stderr, verbose)
+        result.test("hidden org linking to the project tier: mem-share refused",
+                    share.returncode != 0 and "resolves onto project memory" in share.stderr,
+                    share.stdout + share.stderr, verbose)
+
+    with sandbox() as box:
+        # mem-sync (also run by init) must not fast-forward a project checkout that an org links to.
+        remote = box.root / "project-remote.git"
+        box.git("init", "-q", "--bare", str(remote), cwd=box.root)
+        tier = box.root / "tier"
+        box.git("clone", "-q", str(remote), str(tier), cwd=box.root)
+        (tier / "kb").mkdir()
+        (tier / "kb" / "facts.md").write_text("# facts\n")
+        box.git("add", "-A", cwd=tier)
+        box.git("commit", "-q", "-m", "kb", cwd=tier)
+        box.git("push", "-q", "origin", "HEAD", cwd=tier)
+        other = box.root / "other"
+        box.git("clone", "-q", str(remote), str(other), cwd=box.root)
+        (other / "kb" / "facts.md").write_text("# facts\n\nAHEAD-ON-REMOTE\n")
+        box.git("commit", "-q", "-am", "ahead", cwd=other)
+        box.git("push", "-q", "origin", "HEAD", cwd=other)
+        (box.config / "memory" / "orgs").mkdir(parents=True)
+        (box.config / "memory" / "orgs" / "team").symlink_to(tier)
+        before = box.git("rev-parse", "HEAD", cwd=tier)
+        sync = box.run("mem-sync", cwd=box.root, extra_env={"GILFOYLE_PROJECT_MEMORY_DIR": str(tier)})
+        result.test("org linking to the project checkout: mem-sync does not pull it",
+                    box.git("rev-parse", "HEAD", cwd=tier) == before and "Not pulled" in sync.stdout
+                    and "AHEAD-ON-REMOTE" not in (tier / "kb" / "facts.md").read_text(),
+                    sync.stdout + sync.stderr, verbose)
+
+    with sandbox() as box:
         # The org scan has to go through the canonical personal path, not a raw one with a missing dir.
         repo = box.make_repo()
         project = box.make_project_memory(repo)

@@ -11,6 +11,8 @@ set -euo pipefail
 
 CONFIG_DIR="${GILFOYLE_CONFIG_DIR:-$HOME/.config/gilfoyle}"
 ORGS_DIR="$CONFIG_DIR/memory/orgs"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib-memory"
 
 if [[ $# -lt 2 ]]; then
   echo "Usage: scripts/mem-share <org-name> \"commit message\""
@@ -27,6 +29,13 @@ ORG_DIR="$ORGS_DIR/$ORG_NAME"
 if [[ ! -d "$ORG_DIR" ]]; then
   echo "⚠️  Org '$ORG_NAME' not found at $ORG_DIR"
   echo "   Add it with: scripts/org-add $ORG_NAME <git-repo-url>"
+  exit 1
+fi
+
+resolve_project_memory_dir "$CONFIG_DIR/memory" || true
+if project_overlaps_org "$ORG_DIR"; then
+  echo "⚠️  Org '$ORG_NAME' resolves onto project memory ($PROJECT_MEMORY_DIR). Not shared:" >&2
+  echo "   those files are committed with the project, by you." >&2
   exit 1
 fi
 

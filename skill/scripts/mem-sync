@@ -10,6 +10,9 @@ set -euo pipefail
 
 CONFIG_DIR="${GILFOYLE_CONFIG_DIR:-$HOME/.config/gilfoyle}"
 ORGS_DIR="$CONFIG_DIR/memory/orgs"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib-memory"
+resolve_project_memory_dir "$CONFIG_DIR/memory" || true
 
 sync_org() {
   local org_dir="$1"
@@ -19,6 +22,12 @@ sync_org() {
   if [[ ! -d "$org_dir" ]]; then
     echo "⚠️  Org '$org_name' not found at $org_dir"
     return 1
+  fi
+
+  # A pull here would fast-forward the project's own checkout.
+  if project_overlaps_org "$org_dir"; then
+    echo "⚠️  $org_name: resolves onto project memory ($PROJECT_MEMORY_DIR). Not pulled; that is the project's checkout."
+    return 0
   fi
 
   if [[ -d "$org_dir/.git" ]]; then

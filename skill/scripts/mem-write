@@ -150,6 +150,15 @@ elif [[ -n "$ORG" ]]; then
     done
     exit 1
   fi
+  # Org writes get committed and pushed; one that lands in the project tier must not.
+  resolve_project_memory_dir "$MEMORY_DIR" || true
+  if project_overlaps_org "$TARGET_DIR"; then
+    {
+      echo "Error: Org '$ORG' resolves onto project memory ($PROJECT_MEMORY_DIR)."
+      echo "Nothing was written."
+    } >&2
+    exit 1
+  fi
   TIER="org:$ORG"
 else
   TARGET_DIR="$MEMORY_DIR"

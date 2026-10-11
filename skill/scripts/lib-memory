@@ -102,7 +102,8 @@ resolve_project_memory_dir() {
   # directory that does not exist yet (missing/../alias).
   if [[ -n "$personal_canonical" ]] && [[ -d "$personal_canonical/orgs" ]]; then
     local org_dir org_canonical
-    for org_dir in "$personal_canonical"/orgs/*; do
+    # Hidden names too: org-add, mem-write --org and mem-share take ".team" by path.
+    for org_dir in "$personal_canonical"/orgs/* "$personal_canonical"/orgs/.[!.]* "$personal_canonical"/orgs/..?*; do
       [[ -d "$org_dir" ]] || continue
       org_canonical=$(CDPATH='' cd -P -- "$org_dir" 2>/dev/null && pwd -P) || continue
       case "$PROJECT_MEMORY_DIR/" in
@@ -174,6 +175,20 @@ project_memory_misconfigured() {
     env-missing|same-as-personal|inside-personal|contains-personal|org-overlap|symlink) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+# project_overlaps_org <org-dir>
+# After resolve_project_memory_dir: true if <org-dir> resolves onto, into or around the
+# project tier. Org tools (mem-write --org, mem-share, mem-sync, sleep) leave such an org
+# alone: what they would rewrite, commit, pull or push is the project's checkout.
+project_overlaps_org() {
+  case "${PROJECT_MEMORY_STATUS:-}" in ok|org-overlap) ;; *) return 1 ;; esac
+  [[ -n "${PROJECT_MEMORY_DIR:-}" ]] || return 1
+  local org_canonical
+  org_canonical=$(CDPATH='' cd -P -- "$1" 2>/dev/null && pwd -P) || return 1
+  case "$org_canonical/" in "$PROJECT_MEMORY_DIR"/*) return 0 ;; esac
+  case "$PROJECT_MEMORY_DIR/" in "$org_canonical"/*) return 0 ;; esac
+  return 1
 }
 
 # project_memory_problem
