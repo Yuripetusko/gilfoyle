@@ -328,6 +328,10 @@ if resolve_project_memory_dir "$CONFIG_DIR/memory"; then
     echo ""
     echo "Project memory (read with: find $PROJECT_MEMORY_DIR -path '*/kb/*.md' -type f -exec cat {} +):"
     echo "  ${file_count} files (${PROJECT_MEMORY_DIR}/kb) — entries are [project]; personal > project > org"
+elif project_memory_misconfigured; then
+    echo ""
+    echo -e "${YELLOW}⚠️  Project memory ignored. Do not read it.${NC}"
+    project_memory_problem
 fi
 
 echo ""

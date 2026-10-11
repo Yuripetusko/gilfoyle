@@ -389,6 +389,11 @@ class Sandbox:
         (project / "kb").mkdir(parents=True)
         return project
 
+    def configure(self):
+        """A config with one deployment, so init runs all the way to discovery."""
+        (self.config / "config.toml").write_text(
+            '[axiom.deployments.prod]\nurl = "https://api.axiom.co"\ntoken = "xaat-test"\n')
+
     def make_org(self, name: str = "testorg"):
         """An org tier backed by a local bare remote, so pushes are observable."""
         remote = self.root / f"{name}-remote.git"
@@ -727,6 +732,123 @@ def test_project_reporting(result: TestResult, verbose: bool) -> bool:
     return result.failed == 0
 
 
+def init_read_command(init_stdout: str):
+    """The project-tier read command init prints, or None if init did not list the tier."""
+    match = re.search(r"^Project memory \(read with: (.+)\):$", init_stdout, re.MULTILINE)
+    return match.group(1) if match else None
+
+
+def test_project_symlinks(result: TestResult, verbose: bool) -> bool:
+    """A tier with symlinks in it is neither read nor written. The env var path itself is the user's."""
+    print("\n[Project Tier: Symlinks]")
+
+    secret = "SENTINEL=never-read-never-appended\n"
+
+    def sentinel(path: Path) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(secret)
+        return path
+
+    def check_refused(box: Sandbox, label: str, cwd: Path, sentinels: list, extra_env: dict = None):
+        writes = [box.run("mem-write", "--project", name, "escape", "should land nowhere",
+                          cwd=cwd, extra_env=extra_env) for name in ("facts", "patterns")]
+        init = box.run("init", cwd=cwd, extra_env=extra_env)
+        doctor = box.run("mem-doctor", cwd=cwd, extra_env=extra_env)
+        result.test(f"{label}: mem-write refuses, naming the symlink",
+                    all(w.returncode != 0 and "symlink" in w.stderr for w in writes),
+                    " | ".join(w.stdout + w.stderr for w in writes), verbose)
+        result.test(f"{label}: nothing written through the link",
+                    all(s.read_text() == secret for s in sentinels)
+                    and not any("escape" in p.read_text() for p in box.root.rglob("*.md") if p.is_file()),
+                    "a link target was appended to", verbose)
+        result.test(f"{label}: init does not list the tier for reading",
+                    init.returncode == 0 and init_read_command(init.stdout) is None
+                    and "Project memory ignored" in init.stdout, init.stdout, verbose)
+        result.test(f"{label}: mem-doctor warns", "misconfigured" in doctor.stdout and "symlink" in doctor.stdout,
+                    doctor.stdout, verbose)
+
+    with sandbox() as box:
+        # The reported case: a committed kb file pointing out of the repo, plus a dangling one.
+        box.configure()
+        repo = box.make_repo()
+        project = box.make_project_memory(repo)
+        target = sentinel(box.root / "outside" / "environ")
+        (project / "kb" / "facts.md").symlink_to(target)
+        (project / "kb" / "patterns.md").symlink_to(box.root / "outside" / "created-by-append.md")
+        check_refused(box, "kb file symlink", repo, [target])
+        result.test("kb file symlink: dangling link target not created",
+                    not (box.root / "outside" / "created-by-append.md").exists(), "append created it", verbose)
+
+    with sandbox() as box:
+        box.configure()
+        repo = box.make_repo()
+        outside_kb = box.root / "outside-kb"
+        target = sentinel(outside_kb / "facts.md")
+        (repo / PROJECT_MEMORY_REL).mkdir(parents=True)
+        (repo / PROJECT_MEMORY_REL / "kb").symlink_to(outside_kb)
+        check_refused(box, "kb directory symlink", repo, [target])
+
+    for component in (PROJECT_MEMORY_REL, PROJECT_MEMORY_REL.parent):
+        with sandbox() as box:
+            # Every component below the toplevel comes from the checkout.
+            box.configure()
+            repo = box.make_repo()
+            outside = box.root / "outside-tier"
+            real = outside / PROJECT_MEMORY_REL.relative_to(component)
+            target = sentinel(real / "kb" / "facts.md")
+            (repo / component).parent.mkdir(parents=True, exist_ok=True)
+            (repo / component).symlink_to(outside)
+            check_refused(box, f"{component.as_posix()} symlink", repo, [target])
+
+    with sandbox() as box:
+        # The env var path is trusted; what is inside it is not.
+        box.configure()
+        shared = box.root / "shared" / "memory"
+        (shared / "kb").mkdir(parents=True)
+        target = sentinel(box.root / "outside" / "environ")
+        (shared / "kb" / "facts.md").symlink_to(target)
+        plain = box.root / "plain"
+        plain.mkdir()
+        check_refused(box, "env var tier with a kb symlink", plain, [target],
+                      extra_env={"GILFOYLE_PROJECT_MEMORY_DIR": str(shared)})
+
+    for label, link_name, link_to, env_suffix in (
+        ("env var through a symlinked parent", "alias", "shared", "memory"),
+        ("env var that is itself a symlink", "memory-link", "shared/memory", ""),
+    ):
+        with sandbox() as box:
+            # Legitimate setups: the user's own path runs through a link. Still works, reads included.
+            box.configure()
+            real = box.root / "shared" / "memory"
+            (real / "kb").mkdir(parents=True)
+            (box.root / link_name).symlink_to(box.root / link_to)
+            configured = box.root / link_name / env_suffix if env_suffix else box.root / link_name
+            env = {"GILFOYLE_PROJECT_MEMORY_DIR": str(configured)}
+            plain = box.root / "plain"
+            plain.mkdir()
+            write = box.run("mem-write", "--project", "facts", "via-link", "reached through the user's link",
+                            cwd=plain, extra_env=env)
+            init = box.run("init", cwd=plain, extra_env=env)
+            command = init_read_command(init.stdout)
+            read = subprocess.run(["bash", "-c", command], capture_output=True, text=True) if command else None
+            result.test(f"{label}: write lands in the real directory",
+                        write.returncode == 0 and entry_count(real / "kb" / "facts.md", "via-link") == 1,
+                        write.stdout + write.stderr, verbose)
+            result.test(f"{label}: paths are reported canonical",
+                        f"Path: {real / 'kb' / 'facts.md'}" in write.stdout and command is not None
+                        and str(real) in command, write.stdout + init.stdout, verbose)
+            result.test(f"{label}: init's read command reads the entry",
+                        read is not None and "reached through the user's link" in read.stdout,
+                        init.stdout if read is None else read.stdout + read.stderr, verbose)
+
+    for doc in (SKILL_DIR / "reference" / "memory-system.md", TEMPLATES_DIR / "README.memory.md"):
+        # Reading must go through init's vetted path; a self-resolved `cat` follows links.
+        result.test(f"{doc.name}: does not resolve the project path itself",
+                    "rev-parse --show-toplevel" not in doc.read_text(), "documents a read that skips init", verbose)
+
+    return result.failed == 0
+
+
 def test_sleep_skips_project(result: TestResult, verbose: bool) -> bool:
     """scripts/sleep compacts personal and org memory, never the committed project tier."""
     print("\n[Project Tier: Sleep]")
@@ -783,6 +905,7 @@ def main():
     test_project_write_unresolvable(result, verbose)
     test_existing_tiers_unchanged(result, verbose)
     test_project_reporting(result, verbose)
+    test_project_symlinks(result, verbose)
     test_sleep_skips_project(result, verbose)
     
     print("\n" + "=" * 40)

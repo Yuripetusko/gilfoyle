@@ -409,7 +409,7 @@ See `reference/memory-system.md` for full documentation.
 ```bash
 find {{MEMORY_DIR}} -path "*/kb/*.md" -type f -exec cat {} +   # personal + org tiers
 ```
-Project memory lives in the repo, not here: `{{PROJECT_MEMORY_VAR}}`, else `<git-toplevel>/{{PROJECT_MEMORY_PATH}}`. If `scripts/init` lists it, read all its `kb/*.md` too and tag entries `[project]`. Precedence: personal > project > org.
+Project memory lives in the repo, not here: `{{PROJECT_MEMORY_VAR}}`, else `<git-toplevel>/{{PROJECT_MEMORY_PATH}}`. If `scripts/init` lists it, read it with the command init prints and tag entries `[project]`; init refuses a tier containing symlinks, so never resolve or `cat` the path yourself. Precedence: personal > project > org.
 
 ### WRITE
 ```bash

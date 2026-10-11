@@ -112,7 +112,7 @@ if resolve_project_memory_dir "$MEMORY_DIR"; then
     check_ok "$PROJECT_MEMORY_DIR: $entries entries (not in a git repository)"
   fi
   echo ""
-elif [[ "$PROJECT_MEMORY_STATUS" == "env-missing" || "$PROJECT_MEMORY_STATUS" == "same-as-personal" ]]; then
+elif project_memory_misconfigured; then
   echo "Project Tier:"
   check_warn "Ignored: project memory is misconfigured"
   project_memory_problem

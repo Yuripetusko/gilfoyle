@@ -131,7 +131,7 @@ esac
 if [[ "$PROJECT" == "true" ]]; then
   if ! resolve_project_memory_dir "$MEMORY_DIR"; then
     {
-      echo "Error: Project memory not found."
+      echo "Error: No usable project memory."
       project_memory_problem
       echo "Nothing was written."
     } >&2
@@ -171,6 +171,13 @@ fi
 # Generate timestamps
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 TODAY=$(date +%Y-%m-%d)
+
+# The resolver already refused a tier with links in it. Checked again at the last
+# moment because the append follows whatever is there now.
+if [[ "$TIER" == "project" ]] && [[ -L "$TARGET_FILE" ]]; then
+  echo "Error: $TARGET_FILE is a symlink. Not appending through it. Nothing was written." >&2
+  exit 1
+fi
 
 # Write entry
 cat >> "$TARGET_FILE" << EOF

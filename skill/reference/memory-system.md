@@ -23,9 +23,9 @@ for org in ~/.config/gilfoyle/memory/orgs/*/kb; do
   cat "$org"/*.md 2>/dev/null
 done
 
-# Project tier (only if it exists; scripts/init prints the resolved path)
-project_dir="${GILFOYLE_PROJECT_MEMORY_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)/.gilfoyle/memory}"
-cat "$project_dir"/kb/*.md 2>/dev/null
+# Project tier: only if scripts/init lists it, and only with the command it prints.
+# init vets the tier first (no symlinks) and prints its real path. Don't resolve it yourself.
+find <path printed by scripts/init> -path '*/kb/*.md' -type f -exec cat {} +
 ```
 
 When displaying entries, tag by source tier so user knows origin:
@@ -106,7 +106,8 @@ The tier exists only if its `kb/` does. Same layout as the personal tier (`kb/fa
 - **Secrets stay out.** `config.toml` and `cache/` remain in `~/.config/gilfoyle/` (or wherever `GILFOYLE_CONFIG_DIR` points). Do not point `GILFOYLE_CONFIG_DIR` at the project to get this tier. The tier is committed; never write credentials into it.
 - **Sync is plain git.** `mem-sync` and `mem-share` handle org repos only. Pull the project tier the way you pull the project.
 - **Sleep skips it.** `scripts/sleep` never rewrites the project tier: compaction of committed files makes noisy diffs. Dedupe by hand, in a normal change.
-- **Health.** `scripts/init` and `scripts/mem-doctor` report it when it exists. `mem-doctor` warns if `GILFOYLE_PROJECT_MEMORY_DIR` points at a directory without `kb/`.
+- **No symlinks.** Anything inside the tier that is a symlink, `kb/` and its files included, gets the whole tier ignored: not read, not written. So does a symlink at `.gilfoyle/memory` or its parent directory, at the default location. A committed `kb/facts.md -> ~/.ssh/id_ed25519` would otherwise be read into context and appended to while `git status` stays clean. The path you put in `GILFOYLE_PROJECT_MEMORY_DIR` is yours and is followed as given; what is inside it is not.
+- **Health.** `scripts/init` and `scripts/mem-doctor` report it when it exists, and warn when they ignore it: `GILFOYLE_PROJECT_MEMORY_DIR` points at a directory without `kb/`, or the tier contains a symlink.
 
 ## Directory Structure
 

@@ -9,38 +9,52 @@
 #
 #   1. $GILFOYLE_PROJECT_MEMORY_DIR, when set. It is authoritative: if it names
 #      no usable directory that is an error, not a cue to look somewhere else.
-#   2. <git-toplevel>/.gilfoyle/memory, found from the current directory.
+#      The path is yours, so it is followed through symlinks as given.
+#   2. <git-toplevel>/.gilfoyle/memory, found from the current directory. Every
+#      component below the toplevel came out of the checkout: none may be a symlink.
+#
+# Either way, nothing inside the tier may be a symlink. A committed link reads and
+# appends wherever the repo points it (kb/facts.md -> ~/.ssh/id_ed25519) while
+# git status stays clean.
 #
 # The tier exists only if its kb/ directory does. This never creates anything.
 #
-# Sets PROJECT_MEMORY_DIR (empty if nothing to point at) and PROJECT_MEMORY_STATUS:
-#   ok | env-missing | not-git | default-missing | same-as-personal
+# Sets PROJECT_MEMORY_DIR (canonical when ok, empty if nothing to point at),
+# PROJECT_MEMORY_LINK (the offending path, for "symlink") and PROJECT_MEMORY_STATUS:
+#   ok | env-missing | not-git | default-missing | same-as-personal | symlink
 # Returns 0 only for "ok". Callers run under set -e: call it from an `if`.
 resolve_project_memory_dir() {
   local personal_dir="${1:-}"
   local configured="${GILFOYLE_PROJECT_MEMORY_DIR:-}"
-  local toplevel=""
+  local relative=".gilfoyle/memory"
+  local missing_status="" toplevel="" canonical="" links=""
 
   PROJECT_MEMORY_DIR=""
+  PROJECT_MEMORY_LINK=""
   PROJECT_MEMORY_STATUS="ok"
 
   if [[ -n "$configured" ]]; then
     PROJECT_MEMORY_DIR="${configured%/}"
-    if [[ ! -d "$PROJECT_MEMORY_DIR/kb" ]]; then
-      PROJECT_MEMORY_STATUS="env-missing"
-      return 1
-    fi
+    missing_status="env-missing"
   else
     toplevel=$(git rev-parse --show-toplevel 2>/dev/null) || toplevel=""
     if [[ -z "$toplevel" ]]; then
       PROJECT_MEMORY_STATUS="not-git"
       return 1
     fi
-    PROJECT_MEMORY_DIR="$toplevel/.gilfoyle/memory"
-    if [[ ! -d "$PROJECT_MEMORY_DIR/kb" ]]; then
-      PROJECT_MEMORY_STATUS="default-missing"
+    PROJECT_MEMORY_DIR="$toplevel/$relative"
+    missing_status="default-missing"
+    if _project_memory_link "$toplevel/${relative%/*}" || _project_memory_link "$PROJECT_MEMORY_DIR"; then
       return 1
     fi
+  fi
+
+  if _project_memory_link "$PROJECT_MEMORY_DIR/kb"; then
+    return 1
+  fi
+  if [[ ! -d "$PROJECT_MEMORY_DIR/kb" ]]; then
+    PROJECT_MEMORY_STATUS="$missing_status"
+    return 1
   fi
 
   # Pointing the tier at the personal directory would read it twice and let
@@ -50,7 +64,43 @@ resolve_project_memory_dir() {
     return 1
   fi
 
+  # Canonical from here on: find does not descend into a symlinked starting point,
+  # and the path everyone prints is where the bytes actually land.
+  if ! canonical=$(CDPATH='' cd -P -- "$PROJECT_MEMORY_DIR" && pwd -P); then
+    PROJECT_MEMORY_STATUS="$missing_status"
+    return 1
+  fi
+  PROJECT_MEMORY_DIR="$canonical"
+
+  links=$(find "$PROJECT_MEMORY_DIR" -type l 2>/dev/null) || true
+  if [[ -n "$links" ]]; then
+    PROJECT_MEMORY_LINK="${links%%$'\n'*}"
+    PROJECT_MEMORY_STATUS="symlink"
+    return 1
+  fi
+
   return 0
+}
+
+# _project_memory_link <path>
+# True (and records it) if <path> is a symlink, dangling or not.
+_project_memory_link() {
+  if [[ -L "$1" ]]; then
+    PROJECT_MEMORY_LINK="$1"
+    PROJECT_MEMORY_STATUS="symlink"
+    return 0
+  fi
+  return 1
+}
+
+# project_memory_misconfigured
+# True if the last resolve_project_memory_dir found a tier it refuses to use, as
+# opposed to there being none. Worth a warning; silence would look like "no tier".
+project_memory_misconfigured() {
+  case "${PROJECT_MEMORY_STATUS:-}" in
+    env-missing|same-as-personal|symlink) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 # project_memory_problem
@@ -71,6 +121,11 @@ project_memory_problem() {
       ;;
     same-as-personal)
       echo "  $PROJECT_MEMORY_DIR is the personal memory directory. That is not a second tier."
+      ;;
+    symlink)
+      echo "  $PROJECT_MEMORY_LINK is a symlink to '$(readlink "$PROJECT_MEMORY_LINK" 2>/dev/null || true)'."
+      echo "  Project memory is files in the repo, not pointers out of it. Replace the link with the real thing."
+      echo "  Until then the tier is neither read nor written."
       ;;
   esac
 }
